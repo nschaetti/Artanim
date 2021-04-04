@@ -21,118 +21,93 @@
 
 
 # Imports
-import sys
-import os
-import tempfile
-from svgpathtools import svg2paths, wsvg, svg2paths2
+import pyglet
+import numpy as np
+import math
+import random
+from artanim.utils import convert_math_formula_to_svg
+
+# Parameters
+zoom = 30
+n_points = 10
+
+# Transform math expression to SVG
+paths, attributes, svg_attributes = convert_math_formula_to_svg("../tex_template.tex", "\sum_{i=0}^{k} i=2")
+
+# SVG size
+svg_width = int(math.ceil(float(svg_attributes['width'][:-2])))
+svg_height = int(math.ceil(float(svg_attributes['height'][:-2])))
+
+# Window size
+window_width = svg_width * zoom
+window_height = svg_height * zoom
+
+# Create window
+config = pyglet.gl.Config(sample_buffers=1, samples=4)
+window = pyglet.window.Window(width=svg_width * zoom, height=svg_height * zoom, config=config)
+
+# List of symbols
+symbols = list()
+
+# For each path
+for path in paths:
+
+    # Check if continuous
+    if path.iscontinuous():
+        cont_path = [path]
+    else:
+        cont_path = path.continuous_subpaths()
+    # end if
+
+    # For each continuous subpath
+    for sub_path in cont_path:
+        # Keep points
+        points = list()
+        point_colors = list()
+
+        # For each curve in the path
+        for curve in sub_path:
+            print(curve)
+            # To numpy object
+            poly_obj = curve.poly()
+
+            # Append point
+            for n in np.linspace(0.0, 1.0, n_points):
+                # Get position
+                poly_point = poly_obj(n)
+
+                # Add point and color
+                points += [poly_point.real * zoom, poly_point.imag * zoom + window_height / 2]
+                point_colors += [255, 255, 255]
+            # end for
+        # end for
+
+        # Add a list of vertex
+        symbols.append(
+            pyglet.graphics.vertex_list(
+                len(points) // 2,
+                ('v2f', points),
+                ('c3B', point_colors)
+            )
+        )
+    # end for
+    break
+# end for
 
 
-# Transform tex file to DVI file
-def convert_tex_to_dvi(latex_file, tmp_dir):
+# Draw
+@window.event
+def on_draw():
     """
-    Transform tex file to DVI file
-    :param latex_file: Latex file
-    :param tmp_dir: Temporary directory
-    """
-    # Latex command line
-    command = [
-        'latex',
-        '-interaction=batchmod',
-        '-halt-on-error',
-        '-output',
-        '-directory=\"{}\"'.format(latex_file),
-        latex_file,
-        '>',
-        os.devnull
-    ]
-    print(latex_file)
-    # Run command
-    os.system(' '.join(command))
-
-    # Return DVI file
-    return os.path.join(tmp_dir, latex_file.replace(".tex", ".dvi"))
-# end convert_tex_to_dvi
-
-
-# Transform a DVI to a SVG file
-def convert_dvi_to_svg(dvi_file, output_svg_file):
-    """
-    Convert a DVI to
-    :param dvi_file: DVI file
-    :param output_svg_file: Output SVG file
-    """
-    # Command
-    command = [
-        'dvisvgm',
-        dvi_file,
-        '-n',
-        '-v',
-        '0',
-        '-o',
-        '\"{}\"'.format(output_svg_file),
-        '>',
-        os.devnull
-    ]
-
-    # Run command
-    os.system(' '.join(command))
-# end convert_dvi_to_svg
-
-
-# Transform tex to svg
-def convert_tex_to_svg(tex_file):
-    """
-    Transform tex to svg
-    :param tex_file:
-    :param output_svg_file:
-    :param tmp_dir: Temporary directory
+    Draw
     :return:
     """
-    # Temporary file
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        # Convert tex file to dvi
-        dvi_file = convert_tex_to_dvi(tex_file, tmp_dir)
-
-        # SVG file
-        tmp_svg_file = tex_file.replace(".tex", ".svg")
-
-        # Convert DVI to SVG
-        convert_dvi_to_svg(dvi_file, tmp_svg_file)
-
-        # Load SVG file
-        svg_data = svg2paths2(tmp_svg_file)
-        return svg_data
-    # end with
-# end convert_tex_to_svg
+    # For each vertex list
+    # pyglet.gl.glPolygonMode(pyglet.gl.GL_FRONT_AND_BACK, pyglet.gl.GL_FILL)
+    for vertex_list in symbols:
+        vertex_list.draw(pyglet.gl.GL_POLYGON)
+    # end for
+# end on_draw
 
 
-# Transform tex formula to SVG
-def convert_math_formula_to_svg(template_file_path: str, math_formula: str):
-    """
-    Transform tex formula to SVG
-    :param math_formula:
-    :return:
-    """
-    # Open template file
-    with open(template_file_path, 'r') as file:
-        # Read all
-        template_tex = file.read()
-
-        # Replace with formulas
-        template_tex = template_tex.replace("[math_formula]", math_formula)
-
-        # Create a temporary file
-        with tempfile.TemporaryFile(mode='w') as tmp_file:
-            # Write tex content
-            tmp_file.write(template_tex)
-            print("tmp_file: {}".format(tmp_file))
-            # Convert tex file to SVG
-            svg_data = convert_tex_to_svg(tmp_file.name)
-            print(svg_data)
-        # end with
-    # end with
-# end convert_math_formula_to_svg
-
-
-convert_math_formula_to_svg("../tex_template.tex", "\sum_{x=0}^{2} x=2")
-
+pyglet.app.run()
